@@ -7,6 +7,7 @@ The Alarm Clock Project is an embedded system that utilizes ESP32S 38pins, and a
 The system is designed to be modular and extensible, allowing for easy integration of additional sensors or features. The ESP32S microcontroller acts as the brain of the system and communicates with the various sensors and the LCD display to provide a complete alarm clock solution.
 
 ## Table of contents
+* [Feature](#feature)
 * [Components Used](#components-used)
 * [Dependencies](#dependencies)
 * [Contributing](#contributing)
