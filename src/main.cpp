@@ -280,10 +280,14 @@ void display_pm();
 void display_menu(String menu);
 void display_temperature();
 void check_buttons();
+void transition(BUTTONS trigger);
 byte dec2bcd(byte val);
 byte bcd2dec(byte val);
 void display_position(int digits);
 void set_blink_state();
+void reset_blink();
+void increase(int &number, int max, int min);
+void decrease(int &number, int max, int min);
 void alarm_isr();
 void beep();
 
@@ -324,6 +328,7 @@ void fsm_add_transitions()
   fsm.add_transition(&state_menu_set_time, &state_menu_set_date, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_menu_set_time, &state_set_hour, BUTTON_OK, NULL);
   fsm.add_transition(&state_menu_set_time, &state_main, BUTTON_BACK, NULL);
+  fsm.add_timed_transition(&state_menu_set_time, &state_main, 6000, NULL);
 
   // MENU_SET_DATE
   fsm.add_transition(&state_menu_set_date, &state_menu_set_alarm, BUTTON_RIGHT, NULL);
@@ -508,6 +513,7 @@ void send_mqtt_task(void *parameter)
 
 void setup()
 {
+  Wire.begin(SDA, SCL);
   Serial.begin(9600);
   EEPROM.begin(EEPROM_SIZE);
   softwareSerial.begin(9600);
@@ -518,6 +524,20 @@ void setup()
   buttonOK.begin();
   buttonBack.begin();
   dht.begin();
+
+  create_symbols();
+  connect_wifi();
+
+  pinMode(ALARM_OUT, OUTPUT);
+  pinMode(SQW_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(SQW_PIN), alarm_isr, FALLING);
+
+  fsm_add_transitions();
+  setSyncProvider(RTC.get);
+  setSyncInterval(5);
+  RTC.squareWave(DS3232RTC::SQWAVE_NONE);
+
+  LCD.clear();
 
   sendReadySemaphore = xSemaphoreCreateBinary();
   xSemaphoreGive(sendReadySemaphore);
@@ -545,20 +565,6 @@ void setup()
   timerAlarmWrite(timer, 60000000, true);
   timerAlarmEnable(timer);
   mqtt.setServer(server, 1883);
-
-  pinMode(ALARM_OUT, OUTPUT);
-  pinMode(SQW_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(SQW_PIN), alarm_isr, FALLING);
-
-  connect_wifi();
-  fsm_add_transitions();
-
-  setSyncProvider(RTC.get);
-  setSyncInterval(5);
-  RTC.squareWave(DS3232RTC::SQWAVE_NONE);
-
-  create_symbols();
-  LCD.clear();
 }
 
 void loop() {}
@@ -768,7 +774,7 @@ void display_pm()
       break;
     }
 
-    if (index == 4 || index == 6 || index == 8 || index == 10 || index == 12 || index == 14)
+    if (index > 3 && index % 2 == 0)
     {
       previousValue = value;
     }
@@ -904,19 +910,7 @@ void on_menu_set_time_enter()
 void menu_set_time_on_state()
 {
   check_buttons();
-
-  switch (button)
-  {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  }
+  transition(button);
 }
 
 /*
@@ -936,34 +930,17 @@ void on_set_hour_enter()
 void set_hour_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    time_value.hour++;
-    if (time_value.hour > 23)
-      time_value.hour = 0;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    time_value.hour--;
-    if (time_value.hour < 0)
-      time_value.hour = 23;
-    break;
+    reset_blink();
+    increase(time_value.hour, 23, 0);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(time_value.hour, 23, 0);
   }
 
   if (!long_press_button)
@@ -1005,34 +982,17 @@ void on_set_minute_enter()
 void set_minute_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    time_value.minute++;
-    if (time_value.minute > 59)
-      time_value.minute = 0;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    time_value.minute--;
-    if (time_value.minute < 0)
-      time_value.minute = 59;
-    break;
+    reset_blink();
+    increase(time_value.minute, 59, 0);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(time_value.minute, 59, 0);
   }
 
   if (!long_press_button)
@@ -1068,22 +1028,7 @@ void on_menu_set_date_enter()
 void menu_set_date_on_state()
 {
   check_buttons();
-
-  switch (button)
-  {
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  }
+  transition(button);
 }
 
 /*
@@ -1103,34 +1048,17 @@ void on_set_day_enter()
 void set_day_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.day++;
-    if (date_value.day > 31)
-      date_value.day = 1;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.day--;
-    if (date_value.day < 1)
-      date_value.day = 31;
-    break;
+    reset_blink();
+    increase(date_value.day, 31, 1);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(date_value.day, 31, 1);
   }
 
   if (!long_press_button)
@@ -1173,37 +1101,17 @@ void on_set_month_enter()
 void set_month_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.month++;
-    if (date_value.month > 12)
-      date_value.month = 1;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.month--;
-    if (date_value.month < 1)
-      date_value.month = 12;
-    break;
+    reset_blink();
+    increase(date_value.month, 12, 1);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(date_value.month, 12, 1);
   }
 
   if (!long_press_button)
@@ -1245,34 +1153,17 @@ void on_set_year_enter()
 void set_year_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.year++;
-    if (date_value.year > 99)
-      date_value.year = 0;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    date_value.year--;
-    if (date_value.year < 0)
-      date_value.year = 99;
-    break;
+    reset_blink();
+    increase(date_value.year, 99, 0);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(date_value.year, 99, 0);
   }
 
   if (!long_press_button)
@@ -1308,19 +1199,7 @@ void on_menu_set_alarm_enter()
 void menu_set_alarm_on_state()
 {
   check_buttons();
-
-  switch (button)
-  {
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  }
+  transition(button);
 }
 
 /*
@@ -1347,34 +1226,17 @@ void on_set_alarm_hour_enter()
 void set_alarm_hour_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    alarm_value.hour++;
-    if (alarm_value.hour > 23)
-      alarm_value.hour = 0;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    alarm_value.hour--;
-    if (alarm_value.hour < 0)
-      alarm_value.hour = 23;
-    break;
+    reset_blink();
+    increase(alarm_value.hour, 23, 0);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(alarm_value.hour, 23, 0);
   }
 
   if (!long_press_button)
@@ -1423,37 +1285,17 @@ void on_set_alarm_minute_enter()
 void set_alarm_minute_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_RIGHT:
-    fsm.trigger(BUTTON_RIGHT);
-    break;
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    alarm_value.minute++;
-    if (alarm_value.minute > 59)
-      alarm_value.minute = 0;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    alarm_value.minute--;
-    if (alarm_value.minute < 0)
-      alarm_value.minute = 59;
-    break;
+    reset_blink();
+    increase(alarm_value.minute, 59, 0);
+  }
+  if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    decrease(alarm_value.minute, 59, 0);
   }
 
   if (!long_press_button)
@@ -1504,30 +1346,12 @@ void on_set_alarm_on_off_enter()
 void set_alarm_on_off_on_state()
 {
   check_buttons();
+  transition(button);
 
-  switch (button)
+  if (button == BUTTON_UP || button == BUTTON_DOWN)
   {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  case BUTTON_BACK:
-    fsm.trigger(BUTTON_BACK);
-    break;
-  case BUTTON_LEFT:
-    fsm.trigger(BUTTON_LEFT);
-    break;
-  case BUTTON_UP:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
+    reset_blink();
     alarm_value.active = !alarm_value.active;
-    break;
-  case BUTTON_DOWN:
-    button = IDLE;
-    blink_state = false;
-    blink_previousMillis = millis();
-    alarm_value.active = !alarm_value.active;
-    break;
   }
 
   if (alarm_value.active)
@@ -1636,6 +1460,35 @@ void check_buttons()
     long_press_button = true;
     button = BUTTON_DOWN;
   }
+}
+
+void transition(BUTTONS trigger)
+{
+  if (trigger != BUTTON_UP || trigger != BUTTON_DOWN)
+  {
+    fsm.trigger(trigger);
+  }
+}
+
+void reset_blink()
+{
+  button = IDLE;
+  blink_state = false;
+  blink_previousMillis = millis();
+}
+
+void increase(int &number, int max, int min)
+{
+  number++;
+  if (number > max)
+    number = min;
+}
+
+void decrease(int &number, int max, int min)
+{
+  number--;
+  if (number < min)
+    number = max;
 }
 
 void beep()
