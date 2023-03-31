@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <iostream>
+#include <typeinfo>
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <WiFi.h>
@@ -199,7 +201,7 @@ typedef struct
   bool active;
 } alarm_comp;
 
-typedef struct sensorData
+struct sensorData
 {
   int humidity = 0;
   int temperature = 0;
@@ -284,10 +286,12 @@ void transition(BUTTONS trigger);
 byte dec2bcd(byte val);
 byte bcd2dec(byte val);
 void display_position(int digits);
-void set_blink_state();
 void reset_blink();
 void increase(int &number, int max, int min);
 void decrease(int &number, int max, int min);
+void blink_millis();
+void blink(int value, int col, int row);
+void blink(String value, int col, int row);
 void alarm_isr();
 void beep();
 
@@ -525,8 +529,9 @@ void setup()
   buttonBack.begin();
   dht.begin();
 
-  create_symbols();
   connect_wifi();
+  create_symbols();
+  LCD.clear();
 
   pinMode(ALARM_OUT, OUTPUT);
   pinMode(SQW_PIN, INPUT_PULLUP);
@@ -536,8 +541,6 @@ void setup()
   setSyncProvider(RTC.get);
   setSyncInterval(5);
   RTC.squareWave(DS3232RTC::SQWAVE_NONE);
-
-  LCD.clear();
 
   sendReadySemaphore = xSemaphoreCreateBinary();
   xSemaphoreGive(sendReadySemaphore);
@@ -943,26 +946,7 @@ void set_hour_on_state()
     decrease(time_value.hour, 23, 0);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(4, 1);
-      display_position(time_value.hour);
-    }
-    else
-    {
-      LCD.setCursor(4, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(4, 1);
-    display_position(time_value.hour);
-  }
-
-  set_blink_state();
+  blink(time_value.hour, 4, 1);
 }
 
 /*
@@ -995,26 +979,7 @@ void set_minute_on_state()
     decrease(time_value.minute, 59, 0);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(7, 1);
-      display_position(time_value.minute);
-    }
-    else
-    {
-      LCD.setCursor(7, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(7, 1);
-    display_position(time_value.minute);
-  }
-
-  set_blink_state();
+  blink(time_value.minute, 7, 1);
 }
 
 /*
@@ -1038,7 +1003,7 @@ void on_set_day_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
-  LCD.setCursor(6, 0);
+  LCD.setCursor(6, 1);
   LCD.print("/");
   display_position(date_value.month);
   LCD.print("/");
@@ -1061,26 +1026,7 @@ void set_day_on_state()
     decrease(date_value.day, 31, 1);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(4, 1);
-      display_position(date_value.day);
-    }
-    else
-    {
-      LCD.setCursor(4, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(4, 1);
-    display_position(date_value.day);
-  }
-
-  set_blink_state();
+  blink(date_value.day, 4, 1);
 }
 
 /*
@@ -1114,26 +1060,7 @@ void set_month_on_state()
     decrease(date_value.month, 12, 1);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(7, 1);
-      display_position(date_value.month);
-    }
-    else
-    {
-      LCD.setCursor(7, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(7, 1);
-    display_position(date_value.day);
-  }
-
-  set_blink_state();
+  blink(date_value.month, 7, 1);
 }
 
 /*
@@ -1166,26 +1093,7 @@ void set_year_on_state()
     decrease(date_value.year, 99, 0);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(10, 1);
-      display_position(date_value.year);
-    }
-    else
-    {
-      LCD.setCursor(10, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(10, 1);
-    display_position(date_value.year);
-  }
-
-  set_blink_state();
+  blink(date_value.year, 10, 1);
 }
 
 /*
@@ -1239,26 +1147,7 @@ void set_alarm_hour_on_state()
     decrease(alarm_value.hour, 23, 0);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(4, 1);
-      display_position(alarm_value.hour);
-    }
-    else
-    {
-      LCD.setCursor(4, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(4, 1);
-    display_position(alarm_value.hour);
-  }
-
-  set_blink_state();
+  blink(alarm_value.hour, 4, 1);
 }
 
 /*
@@ -1298,26 +1187,7 @@ void set_alarm_minute_on_state()
     decrease(alarm_value.minute, 59, 0);
   }
 
-  if (!long_press_button)
-  {
-    if (!blink_state)
-    {
-      LCD.setCursor(7, 1);
-      display_position(alarm_value.minute);
-    }
-    else
-    {
-      LCD.setCursor(7, 1);
-      LCD.print("  ");
-    }
-  }
-  else
-  {
-    LCD.setCursor(7, 1);
-    display_position(alarm_value.minute);
-  }
-
-  set_blink_state();
+  blink(alarm_value.minute, 7, 1);
 }
 
 /*
@@ -1356,50 +1226,11 @@ void set_alarm_on_off_on_state()
 
   if (alarm_value.active)
   {
-    if (!blink_state)
-    {
-      LCD.setCursor(14, 1);
-      LCD.print(" ");
-      LCD.setCursor(12, 1);
-      LCD.print("ON");
-    }
-    else
-    {
-      LCD.setCursor(12, 1);
-      LCD.print("  ");
-    }
+    blink("ON ", 12, 1);
   }
   else
   {
-    if (!blink_state)
-    {
-      LCD.setCursor(12, 1);
-      LCD.print("OFF");
-    }
-    else
-    {
-      LCD.setCursor(12, 1);
-      LCD.print("   ");
-    }
-  }
-
-  set_blink_state();
-}
-
-void set_blink_state()
-{
-  unsigned long blink_currentMillis = millis();
-  if (blink_currentMillis - blink_previousMillis > blink_interval)
-  {
-    blink_previousMillis = blink_currentMillis;
-    if (!blink_state)
-    {
-      blink_state = true;
-    }
-    else
-    {
-      blink_state = false;
-    }
+    blink("OFF", 12, 1);
   }
 }
 
@@ -1465,9 +1296,7 @@ void check_buttons()
 void transition(BUTTONS trigger)
 {
   if (trigger != BUTTON_UP || trigger != BUTTON_DOWN)
-  {
     fsm.trigger(trigger);
-  }
 }
 
 void reset_blink()
@@ -1489,6 +1318,61 @@ void decrease(int &number, int max, int min)
   number--;
   if (number < min)
     number = max;
+}
+
+void blink_millis()
+{
+  unsigned long blink_currentMillis = millis();
+  if (blink_currentMillis - blink_previousMillis > blink_interval)
+  {
+    blink_previousMillis = blink_currentMillis;
+    if (!blink_state)
+    {
+      blink_state = true;
+    }
+    else
+    {
+      blink_state = false;
+    }
+  }
+}
+
+void blink(int value, int col, int row)
+{
+  blink_millis();
+  if (!long_press_button)
+  {
+    if (!blink_state)
+    {
+      LCD.setCursor(col, row);
+      display_position(value);
+    }
+    else
+    {
+      LCD.setCursor(col, row);
+      LCD.print("  ");
+    }
+  }
+  else
+  {
+    LCD.setCursor(col, row);
+    display_position(value);
+  }
+}
+
+void blink(String value, int col, int row)
+{
+  blink_millis();
+  if (!blink_state)
+  {
+    LCD.setCursor(col, row);
+    LCD.print(value);
+  }
+  else
+  {
+    LCD.setCursor(col, row);
+    LCD.print("   ");
+  }
 }
 
 void beep()
