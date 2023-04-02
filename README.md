@@ -10,6 +10,7 @@ The system is designed to be modular and extensible, allowing for easy integrati
 * [Feature](#feature)
 * [Components Used](#components-used)
 * [Dependencies](#dependencies)
+* [Troubleshooting](#troubleshooting)
 * [Contributing](#contributing)
 * [Credits](#credits)
 * [License](#license)
@@ -44,8 +45,6 @@ The following hardware components are used in this project:
 
 * `Active buzzer`: The active buzzer is an electronic component that can produce a sound when a voltage is applied to it. It is used in this project to produce an alarm sound when the set time is reached. The buzzer is connected to one of the digital pins of the ESP32S and is controlled using software.
 
-## Troubleshooting
-If the readings on the LCD screen are not accurate, check the connections of the sensors and ensure that the correct libraries have been installed. If the alarm does not sound, check the code to ensure that the alarm has been set correctly.
 ## Dependencies
 The software for this project was developed in Visual Studio Code with [PlatformIO](https://platformio.org/) extension using the ESP32 board package. The following libraries are used for connecting and communicating with the hardware components:
 
@@ -60,6 +59,9 @@ The software for this project was developed in Visual Studio Code with [Platform
 * `Adafruit_Sensor.h` and `DHT.h`: These libraries are used for reading the temperature and humidity from the DHT22 sensor. Adafruit_Sensor.h provides a common interface for working with different types of sensors, while DHT.h is specifically designed for working with DHT series of sensors.
 
 * `SoftwareSerial.h`: This library allows the user to create a software-based serial port on any digital pin of the ESP32. In this project, it is used for serial communication with the PMS7003 sensor, which uses a serial protocol to transmit data.
+
+## Troubleshooting
+If the readings on the LCD screen are not accurate, check the connections of the sensors and ensure that the correct libraries have been installed. If the alarm does not sound, check the code to ensure that the alarm has been set correctly.
 
 ## Contributing
 If you'd like to contribute to this project, please fork the repository and submit a pull request. We welcome contributions to improve the project and add new features.
