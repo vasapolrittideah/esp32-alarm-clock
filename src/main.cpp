@@ -333,70 +333,70 @@ void fsm_add_transitions()
   fsm.add_transition(&state_menu_set_time, &state_menu_set_date, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_menu_set_time, &state_set_hour, BUTTON_OK, NULL);
   fsm.add_transition(&state_menu_set_time, &state_main, BUTTON_BACK, NULL);
-  fsm.add_timed_transition(&state_menu_set_time, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_menu_set_time, &state_main, MENU_TIMEOUT, NULL);
 
   // MENU_SET_DATE
   fsm.add_transition(&state_menu_set_date, &state_menu_set_alarm, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_menu_set_date, &state_menu_set_time, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_menu_set_date, &state_set_day, BUTTON_OK, NULL);
   fsm.add_transition(&state_menu_set_date, &state_main, BUTTON_BACK, NULL);
-  fsm.add_timed_transition(&state_menu_set_date, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_menu_set_date, &state_main, MENU_TIMEOUT, NULL);
 
   // MENU_SET_ALARM
   fsm.add_transition(&state_menu_set_alarm, &state_menu_set_date, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_menu_set_alarm, &state_main, BUTTON_BACK, NULL);
   fsm.add_transition(&state_menu_set_alarm, &state_set_alarm_hour, BUTTON_OK, NULL);
-  fsm.add_timed_transition(&state_menu_set_alarm, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_menu_set_alarm, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_HOUR
   fsm.add_transition(&state_set_hour, &state_set_minute, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_hour, &state_main, BUTTON_OK, &on_time_set);
   fsm.add_transition(&state_set_hour, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_hour, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_hour, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_MINUTE
   fsm.add_transition(&state_set_minute, &state_set_hour, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_minute, &state_main, BUTTON_OK, &on_time_set);
   fsm.add_transition(&state_set_minute, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_minute, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_minute, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_DAY
   fsm.add_transition(&state_set_day, &state_set_month, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_day, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_day, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_day, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_day, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_MONTH
   fsm.add_transition(&state_set_month, &state_set_day, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_month, &state_set_year, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_month, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_month, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_month, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_month, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_YEAR
   fsm.add_transition(&state_set_year, &state_set_month, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_year, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_year, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_year, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_year, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_HOUR
   fsm.add_transition(&state_set_alarm_hour, &state_set_alarm_minute, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_alarm_hour, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_hour, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_alarm_hour, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_alarm_hour, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_MINUTE
   fsm.add_transition(&state_set_alarm_minute, &state_set_alarm_hour, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_alarm_minute, &state_set_alarm_on_off, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_alarm_minute, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_minute, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_alarm_minute, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_alarm_minute, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_ON_OFF
   fsm.add_transition(&state_set_alarm_on_off, &state_set_alarm_minute, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_alarm_on_off, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_on_off, &state_main, BUTTON_BACK, &on_cancel);
-  fsm.add_timed_transition(&state_set_alarm_on_off, &state_main, MENU_TIMEOUT, NULL);
+  // fsm.add_timed_transition(&state_set_alarm_on_off, &state_main, MENU_TIMEOUT, NULL);
 }
 
 void spinner()
@@ -934,11 +934,6 @@ void on_set_hour_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Time:");
-  LCD.setCursor(10, 1);
-  LCD.print("H");
-  LCD.setCursor(6, 1);
-  LCD.print(":");
-  display_position(time_value.minute);
 }
 
 void set_hour_on_state()
@@ -958,6 +953,10 @@ void set_hour_on_state()
   }
 
   blink(time_value.hour, 4, 1);
+
+  LCD.print(":");
+  display_position(time_value.minute);
+  LCD.print(" H");
 }
 
 /*
@@ -967,17 +966,16 @@ void on_set_minute_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Time:");
-  LCD.setCursor(10, 1);
-  LCD.print("M");
-  LCD.setCursor(4, 1);
-  display_position(time_value.hour);
-  LCD.print(":");
 }
 
 void set_minute_on_state()
 {
   check_buttons();
   transition(button);
+
+  LCD.setCursor(4, 1);
+  display_position(time_value.hour);
+  LCD.print(":");
 
   if (button == BUTTON_UP)
   {
@@ -991,6 +989,8 @@ void set_minute_on_state()
   }
 
   blink(time_value.minute, 7, 1);
+
+  LCD.print(" M");
 }
 
 /*
@@ -1014,11 +1014,6 @@ void on_set_day_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
-  LCD.setCursor(6, 1);
-  LCD.print("/");
-  display_position(date_value.month);
-  LCD.print("/");
-  display_position(date_value.year);
 }
 
 void set_day_on_state()
@@ -1038,6 +1033,11 @@ void set_day_on_state()
   }
 
   blink(date_value.day, 4, 1);
+
+  LCD.print("/");
+  display_position(date_value.month);
+  LCD.print("/");
+  display_position(date_value.year);
 }
 
 /*
@@ -1047,18 +1047,16 @@ void on_set_month_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
-  LCD.setCursor(4, 1);
-  display_position(date_value.day);
-  LCD.print("/");
-  LCD.setCursor(9, 1);
-  LCD.print("/");
-  display_position(date_value.year);
 }
 
 void set_month_on_state()
 {
   check_buttons();
   transition(button);
+
+  LCD.setCursor(4, 1);
+  display_position(date_value.day);
+  LCD.print("/");
 
   if (button == BUTTON_UP)
   {
@@ -1072,6 +1070,9 @@ void set_month_on_state()
   }
 
   blink(date_value.month, 7, 1);
+
+  LCD.print("/");
+  display_position(date_value.year);
 }
 
 /*
@@ -1081,17 +1082,18 @@ void on_set_year_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
-  LCD.setCursor(4, 1);
-  display_position(date_value.day);
-  LCD.print("/");
-  display_position(date_value.month);
-  LCD.print("/");
 }
 
 void set_year_on_state()
 {
   check_buttons();
   transition(button);
+
+  LCD.setCursor(4, 1);
+  display_position(date_value.day);
+  LCD.print("/");
+  display_position(date_value.month);
+  LCD.print("/");
 
   if (button == BUTTON_UP)
   {
@@ -1128,18 +1130,6 @@ void on_set_alarm_hour_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
-  LCD.setCursor(12, 1);
-  if (alarm_value.active)
-  {
-    LCD.print("ON");
-  }
-  else
-  {
-    LCD.print("OFF");
-  }
-  LCD.setCursor(6, 1);
-  LCD.print(":");
-  display_position(alarm_value.minute);
 }
 
 void set_alarm_hour_on_state()
@@ -1159,6 +1149,11 @@ void set_alarm_hour_on_state()
   }
 
   blink(alarm_value.hour, 4, 1);
+
+  LCD.print(":");
+  display_position(alarm_value.minute);
+  LCD.setCursor(12, 1);
+  alarm_value.active ? LCD.print("ON") : LCD.print("OFF");
 }
 
 /*
@@ -1168,24 +1163,16 @@ void on_set_alarm_minute_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
-  LCD.setCursor(12, 1);
-  if (alarm_value.active)
-  {
-    LCD.print("ON");
-  }
-  else
-  {
-    LCD.print("OFF");
-  }
-  LCD.setCursor(4, 1);
-  display_position(alarm_value.hour);
-  LCD.print(":");
 }
 
 void set_alarm_minute_on_state()
 {
   check_buttons();
   transition(button);
+
+  LCD.setCursor(4, 1);
+  display_position(alarm_value.hour);
+  LCD.print(":");
 
   if (button == BUTTON_UP)
   {
@@ -1199,6 +1186,9 @@ void set_alarm_minute_on_state()
   }
 
   blink(alarm_value.minute, 7, 1);
+
+  LCD.setCursor(12, 1);
+  alarm_value.active ? LCD.print("ON") : LCD.print("OFF");
 }
 
 /*
@@ -1208,20 +1198,6 @@ void on_set_alarm_on_off_enter()
 {
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
-  LCD.setCursor(7, 1);
-  if (alarm_value.active)
-  {
-    LCD.print("ON");
-  }
-  else
-  {
-    LCD.print("OFF");
-  }
-  LCD.setCursor(4, 1);
-  display_position(alarm_value.hour);
-  LCD.print(":");
-  display_position(alarm_value.minute);
-  LCD.print("  ");
 }
 
 void set_alarm_on_off_on_state()
@@ -1229,20 +1205,19 @@ void set_alarm_on_off_on_state()
   check_buttons();
   transition(button);
 
+  LCD.setCursor(4, 1);
+  display_position(alarm_value.hour);
+  LCD.print(":");
+  display_position(alarm_value.minute);
+  LCD.print("  ");
+
   if (button == BUTTON_UP || button == BUTTON_DOWN)
   {
     reset_blink();
     alarm_value.active = !alarm_value.active;
   }
 
-  if (alarm_value.active)
-  {
-    blink("ON ", 12, 1);
-  }
-  else
-  {
-    blink("OFF", 12, 1);
-  }
+  alarm_value.active ? blink("ON ", 12, 1) : blink("OFF", 12, 1);
 }
 
 void check_buttons()
