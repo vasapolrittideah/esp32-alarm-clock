@@ -48,7 +48,7 @@ TaskHandle_t Task1;
 #define INVERT true
 #define REPEAT_FIRST 1000
 #define REPEAT_INCR 255
-#define AFK_THRESHOLD 9000
+#define AFK_THRESHOLD 10000
 
 #define EEPROM_SIZE 5
 
@@ -163,6 +163,7 @@ enum STATES
   SET_ALARM_MINUTE,
   SET_ALARM_ON_OFF,
   ALARM_TIME,
+  SENSOR,
   // Otherwise, it times out after 5 seconds, discards the changes and returns to displaying the time
 };
 
@@ -267,6 +268,7 @@ void set_year_on_state();
 void set_alarm_hour_on_state();
 void set_alarm_minute_on_state();
 void set_alarm_on_off_on_state();
+void display_alarm_time_on_state();
 
 /*
    Transition callback functions on EXIT
@@ -331,6 +333,7 @@ State state_set_year(&on_set_year_enter, &set_year_on_state, &on_exit);
 State state_set_alarm_hour(&on_set_alarm_hour_enter, &set_alarm_hour_on_state, &on_exit);
 State state_set_alarm_minute(&on_set_alarm_minute_enter, &set_alarm_minute_on_state, &on_exit);
 State state_set_alarm_on_off(&on_set_alarm_on_off_enter, &set_alarm_on_off_on_state, &on_exit);
+State state_display_alarm_time(NULL, &display_alarm_time_on_state, &on_exit);
 
 Fsm fsm(&state_main);
 
@@ -338,75 +341,68 @@ void fsm_add_transitions()
 {
   // MAIN
   fsm.add_transition(&state_main, &state_menu_set_time, BUTTON_OK, NULL);
+  fsm.add_transition(&state_main, &state_display_alarm_time, BUTTON_RIGHT, NULL);
+
+  // ALARM_TIME
+  fsm.add_timed_transition(&state_display_alarm_time, &state_main, 3000, NULL);
 
   // MENU_SET_TIME
   fsm.add_transition(&state_menu_set_time, &state_menu_set_date, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_menu_set_time, &state_set_hour, BUTTON_OK, NULL);
   fsm.add_transition(&state_menu_set_time, &state_main, BUTTON_BACK, NULL);
-  // fsm.add_timed_transition(&state_menu_set_time, &state_main, MENU_TIMEOUT, NULL);
 
   // MENU_SET_DATE
   fsm.add_transition(&state_menu_set_date, &state_menu_set_alarm, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_menu_set_date, &state_menu_set_time, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_menu_set_date, &state_set_day, BUTTON_OK, NULL);
   fsm.add_transition(&state_menu_set_date, &state_main, BUTTON_BACK, NULL);
-  // fsm.add_timed_transition(&state_menu_set_date, &state_main, MENU_TIMEOUT, NULL);
 
   // MENU_SET_ALARM
   fsm.add_transition(&state_menu_set_alarm, &state_menu_set_date, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_menu_set_alarm, &state_main, BUTTON_BACK, NULL);
   fsm.add_transition(&state_menu_set_alarm, &state_set_alarm_hour, BUTTON_OK, NULL);
-  // fsm.add_timed_transition(&state_menu_set_alarm, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_HOUR
   fsm.add_transition(&state_set_hour, &state_set_minute, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_hour, &state_main, BUTTON_OK, &on_time_set);
   fsm.add_transition(&state_set_hour, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_hour, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_MINUTE
   fsm.add_transition(&state_set_minute, &state_set_hour, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_minute, &state_main, BUTTON_OK, &on_time_set);
   fsm.add_transition(&state_set_minute, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_minute, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_DAY
   fsm.add_transition(&state_set_day, &state_set_month, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_day, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_day, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_day, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_MONTH
   fsm.add_transition(&state_set_month, &state_set_day, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_month, &state_set_year, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_month, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_month, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_month, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_YEAR
   fsm.add_transition(&state_set_year, &state_set_month, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_year, &state_main, BUTTON_OK, &on_date_set);
   fsm.add_transition(&state_set_year, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_year, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_HOUR
   fsm.add_transition(&state_set_alarm_hour, &state_set_alarm_minute, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_alarm_hour, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_hour, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_alarm_hour, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_MINUTE
   fsm.add_transition(&state_set_alarm_minute, &state_set_alarm_hour, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_alarm_minute, &state_set_alarm_on_off, BUTTON_RIGHT, NULL);
   fsm.add_transition(&state_set_alarm_minute, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_minute, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_alarm_minute, &state_main, MENU_TIMEOUT, NULL);
 
   // SET_ALARM_ON_OFF
   fsm.add_transition(&state_set_alarm_on_off, &state_set_alarm_minute, BUTTON_LEFT, NULL);
   fsm.add_transition(&state_set_alarm_on_off, &state_main, BUTTON_OK, &on_alarm_set);
   fsm.add_transition(&state_set_alarm_on_off, &state_main, BUTTON_BACK, &on_cancel);
-  // fsm.add_timed_transition(&state_set_alarm_on_off, &state_main, MENU_TIMEOUT, NULL);
 }
 
 void spinner()
@@ -846,6 +842,27 @@ void display_menu(String menu)
   }
 }
 
+void display_alarm()
+{
+  LCD.setCursor(5, 0);
+  LCD.print("ALARM");
+  LCD.setCursor(4, 1);
+  display_position(clock_settings.alarm.hour);
+  LCD.print(":");
+  display_position(clock_settings.alarm.minute);
+
+  if (clock_settings.alarm.active)
+  {
+    LCD.setCursor(11, 1);
+    LCD.print("ON ");
+  }
+  else
+  {
+    LCD.setCursor(12, 1);
+    LCD.print("OFF");
+  }
+}
+
 void on_cancel()
 {
   LCD.clear();
@@ -858,6 +875,7 @@ void on_cancel()
 
 void on_exit()
 {
+  not_AFK();
   blink_state = false;
   LCD.clear();
 }
@@ -878,7 +896,7 @@ void on_main_enter()
   LCD.write(8);
   LCD.setCursor(1, 1);
   LCD.print("ESP32 & DS3231");
-  vTaskDelay(1800 / portTICK_PERIOD_MS);
+  vTaskDelay(1200 / portTICK_PERIOD_MS);
   LCD.clear();
 }
 
@@ -913,6 +931,14 @@ void main_on_state()
 
   check_button();
   transition(button);
+}
+
+/*
+   ALARM_TIME
+*/
+void display_alarm_time_on_state()
+{
+  display_alarm();
 }
 
 /*
@@ -1082,7 +1108,7 @@ void menu_set_alarm_on_state()
 void on_set_alarm_hour_enter()
 {
   state = SET_ALARM_HOUR;
-  LCD.setCursor(4, 0);
+  LCD.setCursor(3, 0);
   LCD.print("Set Alarm:");
 }
 
@@ -1105,7 +1131,7 @@ void set_alarm_hour_on_state()
 void on_set_alarm_minute_enter()
 {
   state = SET_ALARM_MINUTE;
-  LCD.setCursor(4, 0);
+  LCD.setCursor(3, 0);
   LCD.print("Set Alarm:");
 }
 
@@ -1129,7 +1155,7 @@ void set_alarm_minute_on_state()
 void on_set_alarm_on_off_enter()
 {
   state = SET_ALARM_ON_OFF;
-  LCD.setCursor(4, 0);
+  LCD.setCursor(3, 0);
   LCD.print("Set Alarm:");
 }
 
