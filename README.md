@@ -19,9 +19,9 @@ The system is designed to be modular and extensible, allowing for easy integrati
 - [x] Displays the current time in 24-hour format
 - [x] Displays the current date in dd/mm/yyyy format
 - [x] Displays the abbreviated day of the week (e.g. Wed)
-- [ ] Displays humidity using DHT22
+- [x] Displays humidity using DHT22
 - [x] Displays temperature using DHT22
-- [ ] Displays PM1.0, PM2.5, and PM10 using PMS7003
+- [x] Displays PM1.0, PM2.5, and PM10 using PMS7003
 - [x] Offers a menu-based navigation system.
 - [x] Sounds an alarm when the set time is reached
 - [x] Allows the user to save the alarm time information in the EEPROM.

@@ -48,16 +48,13 @@ TaskHandle_t Task1;
 #define INVERT true
 #define REPEAT_FIRST 1000
 #define REPEAT_INCR 255
-#define AFK_THRESHOLD 10000
+#define AFK_THRESHOLD 15000
 
 #define EEPROM_SIZE 5
 
 LiquidCrystal_I2C LCD = LiquidCrystal_I2C(0x27, 16, 2);
 DHT dht(DHT_PIN, DHT_TYPE);
 DS3232RTC RTC;
-unsigned int pm1 = 0;
-unsigned int pm2_5 = 0;
-unsigned int pm10 = 0;
 
 /*
    Symbols
@@ -67,10 +64,10 @@ byte BELL[8] = {
     0b01110,
     0b01110,
     0b01110,
-    0b01110,
     0b11111,
     0b00000,
-    0b00100};
+    0b00100,
+    0b00000};
 
 byte THERMOMETER[8] = {
     0b00100,
@@ -78,6 +75,16 @@ byte THERMOMETER[8] = {
     0b01010,
     0b01110,
     0b01110,
+    0b11111,
+    0b11111,
+    0b01110};
+
+byte WATER_DROPLET[8] = {
+    0b00100,
+    0b00100,
+    0b01110,
+    0b01110,
+    0b11111,
     0b11111,
     0b11111,
     0b01110};
@@ -140,6 +147,26 @@ byte MENU_LEFT_ARROW[8] = {
     0b00111,
     0b00011,
     0b00001,
+    0b00000};
+
+byte MU[8] = {
+    0b10001,
+    0b10001,
+    0b10001,
+    0b10001,
+    0b10011,
+    0b11101,
+    0b10000,
+    0b00000};
+
+byte POWER_THREE[8] = {
+    0b11100,
+    0b00100,
+    0b11100,
+    0b00100,
+    0b11100,
+    0b00000,
+    0b00000,
     0b00000};
 
 /*
@@ -210,16 +237,16 @@ struct ClockSettings
   AlarmComp alarm;
 };
 
-struct sensorData
+struct SensorValues
 {
   int humidity = 0;
   int temperature = 0;
-  int pm1_0 = 0;
+  int pm1 = 0;
   int pm2_5 = 0;
-  int pm10_0 = 0;
+  int pm10 = 0;
 };
 
-volatile sensorData Datas;
+volatile SensorValues sensor_values;
 SemaphoreHandle_t sendReadySemaphore;
 hw_timer_t *timer = NULL;
 
@@ -252,6 +279,8 @@ void on_set_year_enter();
 void on_set_alarm_hour_enter();
 void on_set_alarm_minute_enter();
 void on_set_alarm_on_off_enter();
+void on_display_alarm_time_enter();
+void on_display_sensor_values_enter();
 
 /*
    Transition callback functions on STATE
@@ -269,6 +298,7 @@ void set_alarm_hour_on_state();
 void set_alarm_minute_on_state();
 void set_alarm_on_off_on_state();
 void display_alarm_time_on_state();
+void display_sensor_values_on_state();
 
 /*
    Transition callback functions on EXIT
@@ -279,18 +309,22 @@ void on_cancel();
 void get_time();
 void set_time();
 void on_time_set();
-void display_time();
+void display_time(int row, int col);
 void get_date();
 void set_date();
 void on_date_set();
-void display_date();
+void display_date(int row, int col);
+void display_date_of_week(int row, int col);
 void get_alarm();
 void set_alarm();
 void on_alarm_set();
 
-void display_pm();
+void get_pm();
 void display_menu(String menu);
-void display_temperature();
+void get_temperature_humidity();
+void display_temperature(int row, int col);
+void display_humidity(int row, int col);
+void display_pm_2_5(int col);
 void check_button();
 void check_AFK();
 void not_AFK();
@@ -333,7 +367,8 @@ State state_set_year(&on_set_year_enter, &set_year_on_state, &on_exit);
 State state_set_alarm_hour(&on_set_alarm_hour_enter, &set_alarm_hour_on_state, &on_exit);
 State state_set_alarm_minute(&on_set_alarm_minute_enter, &set_alarm_minute_on_state, &on_exit);
 State state_set_alarm_on_off(&on_set_alarm_on_off_enter, &set_alarm_on_off_on_state, &on_exit);
-State state_display_alarm_time(NULL, &display_alarm_time_on_state, &on_exit);
+State state_display_alarm_time(&on_display_alarm_time_enter, &display_alarm_time_on_state, &on_exit);
+State state_display_sensor_values(&on_display_sensor_values_enter, &display_sensor_values_on_state, &on_exit);
 
 Fsm fsm(&state_main);
 
@@ -342,9 +377,13 @@ void fsm_add_transitions()
   // MAIN
   fsm.add_transition(&state_main, &state_menu_set_time, BUTTON_OK, NULL);
   fsm.add_transition(&state_main, &state_display_alarm_time, BUTTON_RIGHT, NULL);
+  fsm.add_transition(&state_main, &state_display_sensor_values, BUTTON_LEFT, NULL);
 
   // ALARM_TIME
   fsm.add_timed_transition(&state_display_alarm_time, &state_main, 3000, NULL);
+
+  // SENSOR
+  fsm.add_transition(&state_display_sensor_values, &state_main, BUTTON_BACK, NULL);
 
   // MENU_SET_TIME
   fsm.add_transition(&state_menu_set_time, &state_menu_set_date, BUTTON_RIGHT, NULL);
@@ -458,6 +497,9 @@ void create_symbols()
   LCD.createChar(6, CHAR_L);
   LCD.createChar(7, CHAR_C);
   LCD.createChar(8, CHAR_EXCL);
+  LCD.createChar(9, WATER_DROPLET);
+  LCD.createChar(10, MU);
+  LCD.createChar(11, POWER_THREE);
 }
 
 void IRAM_ATTR onTimer()
@@ -503,7 +545,7 @@ void send_mqtt_task(void *parameter)
         Serial.println("MQTT Sending");
         // Reset Timer
 
-        String dataString = "&field1=" + String(Datas.humidity) + "&field2=" + String(Datas.temperature) + "&field3=" + String(Datas.pm1_0) + "&field4=" + String(Datas.pm2_5) + "&field5=" + String(Datas.pm10_0);
+        String dataString = "&field1=" + String(sensor_values.humidity) + "&field2=" + String(sensor_values.temperature) + "&field3=" + String(sensor_values.pm1) + "&field4=" + String(sensor_values.pm2_5) + "&field5=" + String(sensor_values.pm10);
         String topicString = "channels/" + String(channelID) + "/publish";
         Serial.println(dataString);
         mqtt.publish(topicString.c_str(), dataString.c_str());
@@ -623,10 +665,10 @@ void on_time_set()
   LCD.clear();
 }
 
-void display_time()
+void display_time(int row, int col)
 {
   get_time();
-  LCD.setCursor(0, 0);
+  LCD.setCursor(row, col);
   display_position(clock_settings.time.hour);
   LCD.print(":");
   display_position(clock_settings.time.minute);
@@ -667,16 +709,19 @@ void on_date_set()
   LCD.clear();
 }
 
-void display_date()
+void display_date(int row, int col)
 {
   get_date();
-  LCD.setCursor(8, 1);
+  LCD.setCursor(row, col);
   display_position(clock_settings.date.day);
   LCD.print("/");
   display_position(clock_settings.date.month);
   LCD.print("/");
   display_position(clock_settings.date.year);
+}
 
+void display_date_of_week(int row, int col)
+{
   dow = weekday();
   switch (dow)
   {
@@ -702,7 +747,7 @@ void display_date()
     day_of_week = "Sat";
     break;
   }
-  LCD.setCursor(0, 1);
+  LCD.setCursor(row, col);
   LCD.print(day_of_week);
 }
 
@@ -754,32 +799,16 @@ void on_alarm_set()
   LCD.clear();
 }
 
-void display_temperature()
+void get_temperature_humidity()
 {
+  int humi = dht.readHumidity();
   int temp_C = dht.readTemperature();
 
-  Datas.temperature = temp_C;
-
-  LCD.setCursor(11, 0);
-  LCD.write(4);
-  LCD.setCursor(12, 0);
-  if (temp_C < 10)
-  {
-    LCD.print("0");
-  }
-  LCD.print(temp_C);
-  LCD.print((char)223);
-  LCD.print("C");
+  sensor_values.temperature = temp_C;
+  sensor_values.humidity = humi;
 }
 
-void display_humidity()
-{
-  int hum = dht.readHumidity();
-
-  Datas.humidity = hum;
-}
-
-void display_pm()
+void get_pm()
 {
   int index = 0;
   char value;
@@ -800,27 +829,61 @@ void display_pm()
     }
     else if (index == 5)
     {
-      pm1 = 256 * previousValue + value;
-      Datas.pm1_0 = pm1;
+      sensor_values.pm1 = 256 * previousValue + value;
     }
     else if (index == 7)
     {
-      pm2_5 = 256 * previousValue + value;
-      Datas.pm2_5 = pm2_5;
+      sensor_values.pm2_5 = 256 * previousValue + value;
     }
     else if (index == 9)
     {
-      pm10 = 256 * previousValue + value;
-      Datas.pm10_0 = pm10;
+      sensor_values.pm10 = 256 * previousValue + value;
     }
     else if (index > 15)
     {
       break;
     }
+
     index++;
   }
   while (softwareSerial.available())
     softwareSerial.read();
+}
+
+void display_temperature(int row, int col)
+{
+  LCD.setCursor(row, col);
+  LCD.write(4);
+  if (sensor_values.temperature < 10)
+  {
+    LCD.print("0");
+  }
+  LCD.print(sensor_values.temperature);
+  LCD.print((char)223);
+  LCD.print("C");
+}
+
+void display_humidity(int row, int col)
+{
+  LCD.setCursor(row, col);
+  LCD.write(9);
+  if (sensor_values.humidity < 10)
+  {
+    LCD.print("0");
+  }
+  LCD.print(sensor_values.humidity);
+  LCD.print("%");
+}
+
+void display_pm_2_5(int col)
+{
+  LCD.setCursor(0, col);
+  LCD.print("Dust: ");
+  LCD.print(sensor_values.pm2_5);
+  LCD.setCursor(11, col);
+  LCD.write(10);
+  LCD.print("g/m");
+  LCD.write(11);
 }
 
 void display_menu(String menu)
@@ -902,12 +965,13 @@ void on_main_enter()
 
 void main_on_state()
 {
+  get_pm();
   get_alarm();
-  display_time();
-  display_date();
-  display_temperature();
-  display_humidity();
-  display_pm();
+  get_temperature_humidity();
+  display_time(0, 0);
+  display_date(8, 1);
+  display_date_of_week(0, 1);
+  display_temperature(11, 0);
 
   if (alarm_isr_was_called)
   {
@@ -936,9 +1000,34 @@ void main_on_state()
 /*
    ALARM_TIME
 */
+void on_display_alarm_time_enter()
+{
+  state = ALARM_TIME;
+}
+
 void display_alarm_time_on_state()
 {
   display_alarm();
+}
+
+/*
+   SENSOR
+*/
+void on_display_sensor_values_enter()
+{
+  state = SENSOR;
+}
+
+void display_sensor_values_on_state()
+{
+  get_pm();
+  get_temperature_humidity();
+  display_temperature(3, 0);
+  display_humidity(9, 0);
+  display_pm_2_5(1);
+
+  check_button();
+  transition(button);
 }
 
 /*
