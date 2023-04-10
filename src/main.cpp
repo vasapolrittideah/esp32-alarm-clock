@@ -48,7 +48,7 @@ TaskHandle_t Task1;
 #define INVERT true
 #define REPEAT_FIRST 1000
 #define REPEAT_INCR 255
-#define MENU_TIMEOUT 9000
+#define AFK_THRESHOLD 9000
 
 #define EEPROM_SIZE 5
 
@@ -181,26 +181,33 @@ enum BUTTONS
 
 BUTTONS button = IDLE;
 
-typedef struct
+struct ClockSettings
 {
-  int hour;
-  int minute;
-  int second;
-} time_comp;
+  struct TimeComp
+  {
+    int hour;
+    int minute;
+    int second;
+  };
 
-typedef struct
-{
-  int day;
-  int month;
-  int year;
-} date_comp;
+  struct DateComp
+  {
+    int day;
+    int month;
+    int year;
+  };
 
-typedef struct
-{
-  int hour;
-  int minute;
-  bool active;
-} alarm_comp;
+  struct AlarmComp
+  {
+    int hour;
+    int minute;
+    bool active;
+  };
+
+  TimeComp time;
+  DateComp date;
+  AlarmComp alarm;
+};
 
 struct sensorData
 {
@@ -215,15 +222,15 @@ volatile sensorData Datas;
 SemaphoreHandle_t sendReadySemaphore;
 hw_timer_t *timer = NULL;
 
-time_comp time_value;
-date_comp date_value;
-alarm_comp alarm_value;
+ClockSettings clock_settings;
 
 int8_t dow;
 String day_of_week;
 
 uint32_t blink_interval = 300;
-uint32_t blink_previousMillis = 0;
+uint32_t blink_previous_millis = 0;
+unsigned long last_activity_time = 0;
+bool is_AFK = false;
 bool blink_state = false;
 bool long_press_button = false;
 unsigned long rpt = REPEAT_FIRST;
@@ -267,29 +274,32 @@ void set_alarm_on_off_on_state();
 void on_exit();
 void on_cancel();
 
-void get_time(time_comp *time_comp);
-void set_time(time_comp *time_comp);
+void get_time();
+void set_time();
 void on_time_set();
 void display_time();
-void get_date(date_comp *date_comp);
-void set_date(date_comp *date_comp);
+void get_date();
+void set_date();
 void on_date_set();
 void display_date();
-void get_alarm(alarm_comp *alarm_comp);
-void set_alarm(alarm_comp *alarm_comp);
+void get_alarm();
+void set_alarm();
 void on_alarm_set();
 
 void display_pm();
 void display_menu(String menu);
 void display_temperature();
-void check_buttons();
+void check_button();
+void check_AFK();
+void not_AFK();
 void transition(BUTTONS trigger);
 byte dec2bcd(byte val);
 byte bcd2dec(byte val);
 void display_position(int digits);
-void reset_blink();
 void increase(int &number, int max, int min);
 void decrease(int &number, int max, int min);
+void update_clock_settings();
+void reset_blink();
 void blink_millis();
 void blink(int value, int col, int row);
 void blink(String value, int col, int row);
@@ -459,7 +469,7 @@ void IRAM_ATTR onTimer()
   xSemaphoreGiveFromISR(sendReadySemaphore, NULL);
 }
 
-void alarm_clock_task(void *parameter)
+void alarm_clock_settings_task(void *parameter)
 {
   for (;;)
   {
@@ -557,13 +567,13 @@ void setup()
   xSemaphoreGive(sendReadySemaphore);
   // WiFi need to run on core that arduino runs
   xTaskCreatePinnedToCore(
-      alarm_clock_task,   /* Function to implement the task */
-      "alarm_clock_task", /* Name of the task */
-      2048,               /* Stack size in words */
-      NULL,               /* Task input parameter */
-      1,                  /* Priority of the task */
-      &Task0,             /* Task handle. */
-      0);                 /* Core where the task should run */
+      alarm_clock_settings_task,   /* Function to implement the task */
+      "alarm_clock_settings_task", /* Name of the task */
+      2048,                        /* Stack size in words */
+      NULL,                        /* Task input parameter */
+      1,                           /* Priority of the task */
+      &Task0,                      /* Task handle. */
+      0);                          /* Core where the task should run */
   xTaskCreatePinnedToCore(
       send_mqtt_task,   /* Function to implement the task */
       "send_mqtt_task", /* Name of the task */
@@ -573,7 +583,7 @@ void setup()
       &Task1,           /* Task handle. */
       1);               /* Core where the task should run */
 
-  timer = timerBegin(0, 80, true);             // 80 prescaler for 1MHz clock, count up
+  timer = timerBegin(0, 80, true);             // 80 prescaler for 1MHz clock_settings, count up
   timerAttachInterrupt(timer, &onTimer, true); // Attach ISR
   // timerAlarmWrite(timer, 1800000000, true);  // 30 minutes in microseconds
   timerAlarmWrite(timer, 60000000, true);
@@ -583,32 +593,32 @@ void setup()
 
 void loop() {}
 
-void get_time(time_comp *time_comp)
+void get_time()
 {
   Wire.beginTransmission(0x68);
   Wire.write(0); // set register to zero
   Wire.endTransmission();
   Wire.requestFrom(0x68, 3); // 3 bytes (sec, min, hour)
-  time_comp->second = bcd2dec(Wire.read() & 0x7f);
-  time_comp->minute = bcd2dec(Wire.read());
-  time_comp->hour = bcd2dec(Wire.read() & 0x3f);
+  clock_settings.time.second = bcd2dec(Wire.read() & 0x7f);
+  clock_settings.time.minute = bcd2dec(Wire.read());
+  clock_settings.time.hour = bcd2dec(Wire.read() & 0x3f);
 }
 
-void set_time(time_comp *time_comp)
+void set_time()
 {
   Wire.beginTransmission(0x68);
   Wire.write(0x00);
-  time_comp->second = 0;
-  Wire.write(dec2bcd(time_comp->second));
-  Wire.write(dec2bcd(time_comp->minute));
-  Wire.write(dec2bcd(time_comp->hour));
+  clock_settings.time.second = 0;
+  Wire.write(dec2bcd(clock_settings.time.second));
+  Wire.write(dec2bcd(clock_settings.time.minute));
+  Wire.write(dec2bcd(clock_settings.time.hour));
   Wire.write(0x00);
   Wire.endTransmission();
 }
 
 void on_time_set()
 {
-  set_time(&time_value);
+  set_time();
   LCD.clear();
   LCD.setCursor(4, 0);
   LCD.print("Time Set!");
@@ -619,40 +629,40 @@ void on_time_set()
 
 void display_time()
 {
-  get_time(&time_value);
+  get_time();
   LCD.setCursor(0, 0);
-  display_position(time_value.hour);
+  display_position(clock_settings.time.hour);
   LCD.print(":");
-  display_position(time_value.minute);
+  display_position(clock_settings.time.minute);
   LCD.print(":");
-  display_position(time_value.second);
+  display_position(clock_settings.time.second);
 }
 
-void get_date(date_comp *date_comp)
+void get_date()
 {
   Wire.beginTransmission(0x68);
   Wire.write(4); // set register to 3 (day)
   Wire.endTransmission();
   Wire.requestFrom(0x68, 3); // 3 bytes (day, month, year) - DOW get from Time.h library
-  date_comp->day = bcd2dec(Wire.read());
-  date_comp->month = bcd2dec(Wire.read());
-  date_comp->year = bcd2dec(Wire.read());
+  clock_settings.date.day = bcd2dec(Wire.read());
+  clock_settings.date.month = bcd2dec(Wire.read());
+  clock_settings.date.year = bcd2dec(Wire.read());
 }
 
-void set_date(date_comp *date_comp)
+void set_date()
 {
   Wire.beginTransmission(0x68);
   Wire.write(4);
   // Wire.write(dec2bcd(DoW));
-  Wire.write(dec2bcd(date_comp->day));
-  Wire.write(dec2bcd(date_comp->month));
-  Wire.write(dec2bcd(date_comp->year));
+  Wire.write(dec2bcd(clock_settings.date.day));
+  Wire.write(dec2bcd(clock_settings.date.month));
+  Wire.write(dec2bcd(clock_settings.date.year));
   Wire.endTransmission();
 }
 
 void on_date_set()
 {
-  set_date(&date_value);
+  set_date();
   LCD.clear();
   LCD.setCursor(4, 0);
   LCD.print("Date Set!");
@@ -663,13 +673,13 @@ void on_date_set()
 
 void display_date()
 {
-  get_date(&date_value);
+  get_date();
   LCD.setCursor(8, 1);
-  display_position(date_value.day);
+  display_position(clock_settings.date.day);
   LCD.print("/");
-  display_position(date_value.month);
+  display_position(clock_settings.date.month);
   LCD.print("/");
-  display_position(date_value.year);
+  display_position(clock_settings.date.year);
 
   dow = weekday();
   switch (dow)
@@ -700,30 +710,30 @@ void display_date()
   LCD.print(day_of_week);
 }
 
-void set_alarm(alarm_comp *alarm_comp)
+void set_alarm()
 {
-  EEPROM.write(0, alarm_comp->hour);
-  EEPROM.write(1, alarm_comp->minute);
-  EEPROM.write(2, alarm_comp->active);
+  EEPROM.write(0, clock_settings.alarm.hour);
+  EEPROM.write(1, clock_settings.alarm.minute);
+  EEPROM.write(2, clock_settings.alarm.active);
   EEPROM.commit();
 
-  RTC.setAlarm(DS3232RTC::ALM1_MATCH_HOURS, 0, alarm_comp->minute, alarm_comp->hour, 0);
+  RTC.setAlarm(DS3232RTC::ALM1_MATCH_HOURS, 0, clock_settings.alarm.minute, clock_settings.alarm.hour, 0);
   RTC.alarm(DS3232RTC::ALARM_1); // ensure RTC interrupt flag is cleared
-  RTC.alarmInterrupt(DS3232RTC::ALARM_1, alarm_comp->active);
+  RTC.alarmInterrupt(DS3232RTC::ALARM_1, clock_settings.alarm.active);
 }
 
-void get_alarm(alarm_comp *alarm_comp)
+void get_alarm()
 {
-  alarm_comp->hour = EEPROM.read(0);
-  if (alarm_comp->hour > 23)
-    alarm_comp->hour = 0;
+  clock_settings.alarm.hour = EEPROM.read(0);
+  if (clock_settings.alarm.hour > 23)
+    clock_settings.alarm.hour = 0;
 
-  alarm_comp->minute = EEPROM.read(1);
-  if (alarm_comp->minute > 59)
-    alarm_comp->minute = 0;
+  clock_settings.alarm.minute = EEPROM.read(1);
+  if (clock_settings.alarm.minute > 59)
+    clock_settings.alarm.minute = 0;
 
-  alarm_comp->active = EEPROM.read(2);
-  if (alarm_comp->active)
+  clock_settings.alarm.active = EEPROM.read(2);
+  if (clock_settings.alarm.active)
   {
     LCD.setCursor(4, 1);
     LCD.print(" ");
@@ -739,7 +749,7 @@ void get_alarm(alarm_comp *alarm_comp)
 
 void on_alarm_set()
 {
-  set_alarm(&alarm_value);
+  set_alarm();
   LCD.clear();
   LCD.setCursor(4, 0);
   LCD.print("Alarm Set!");
@@ -838,7 +848,6 @@ void display_menu(String menu)
 
 void on_cancel()
 {
-  set_time(&time_value);
   LCD.clear();
   LCD.setCursor(4, 0);
   LCD.print("Canceled!");
@@ -850,8 +859,6 @@ void on_cancel()
 void on_exit()
 {
   blink_state = false;
-  button = IDLE;
-
   LCD.clear();
 }
 
@@ -860,6 +867,7 @@ void on_exit()
 */
 void on_main_enter()
 {
+  state = MAIN;
   LCD.setCursor(6, 0);
   LCD.write(5);
   LCD.setCursor(7, 0);
@@ -876,7 +884,7 @@ void on_main_enter()
 
 void main_on_state()
 {
-  get_alarm(&alarm_value);
+  get_alarm();
   display_time();
   display_date();
   display_temperature();
@@ -903,14 +911,8 @@ void main_on_state()
     LCD.clear();
   }
 
-  check_buttons();
-
-  switch (button)
-  {
-  case BUTTON_OK:
-    fsm.trigger(BUTTON_OK);
-    break;
-  }
+  check_button();
+  transition(button);
 }
 
 /*
@@ -918,12 +920,13 @@ void main_on_state()
 */
 void on_menu_set_time_enter()
 {
+  state = MENU_SET_TIME;
   display_menu("Set Time");
 }
 
 void menu_set_time_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
 }
 
@@ -932,30 +935,20 @@ void menu_set_time_on_state()
 */
 void on_set_hour_enter()
 {
+  state = SET_HOUR;
   LCD.setCursor(4, 0);
   LCD.print("Set Time:");
 }
 
 void set_hour_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(time_value.hour, 23, 0);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(time_value.hour, 23, 0);
-  }
-
-  blink(time_value.hour, 4, 1);
-
+  blink(clock_settings.time.hour, 4, 1);
   LCD.print(":");
-  display_position(time_value.minute);
+  display_position(clock_settings.time.minute);
   LCD.print(" H");
 }
 
@@ -964,32 +957,21 @@ void set_hour_on_state()
 */
 void on_set_minute_enter()
 {
+  state = SET_MINUTE;
   LCD.setCursor(4, 0);
   LCD.print("Set Time:");
 }
 
 void set_minute_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
   LCD.setCursor(4, 1);
-  display_position(time_value.hour);
+  display_position(clock_settings.time.hour);
   LCD.print(":");
-
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(time_value.minute, 59, 0);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(time_value.minute, 59, 0);
-  }
-
-  blink(time_value.minute, 7, 1);
-
+  blink(clock_settings.time.minute, 7, 1);
   LCD.print(" M");
 }
 
@@ -998,12 +980,13 @@ void set_minute_on_state()
 */
 void on_menu_set_date_enter()
 {
+  state = MENU_SET_DATE;
   display_menu("Set Date");
 }
 
 void menu_set_date_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
 }
 
@@ -1012,32 +995,22 @@ void menu_set_date_on_state()
 */
 void on_set_day_enter()
 {
+  state = SET_DAY;
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
 }
 
 void set_day_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(date_value.day, 31, 1);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(date_value.day, 31, 1);
-  }
-
-  blink(date_value.day, 4, 1);
-
+  blink(clock_settings.date.day, 4, 1);
   LCD.print("/");
-  display_position(date_value.month);
+  display_position(clock_settings.date.month);
   LCD.print("/");
-  display_position(date_value.year);
+  display_position(clock_settings.date.year);
 }
 
 /*
@@ -1045,34 +1018,23 @@ void set_day_on_state()
 */
 void on_set_month_enter()
 {
+  state = SET_MONTH;
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
 }
 
 void set_month_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
   LCD.setCursor(4, 1);
-  display_position(date_value.day);
+  display_position(clock_settings.date.day);
   LCD.print("/");
-
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(date_value.month, 12, 1);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(date_value.month, 12, 1);
-  }
-
-  blink(date_value.month, 7, 1);
-
+  blink(clock_settings.date.month, 7, 1);
   LCD.print("/");
-  display_position(date_value.year);
+  display_position(clock_settings.date.year);
 }
 
 /*
@@ -1080,33 +1042,23 @@ void set_month_on_state()
 */
 void on_set_year_enter()
 {
+  state = SET_YEAR;
   LCD.setCursor(4, 0);
   LCD.print("Set Date:");
 }
 
 void set_year_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
   LCD.setCursor(4, 1);
-  display_position(date_value.day);
+  display_position(clock_settings.date.day);
   LCD.print("/");
-  display_position(date_value.month);
+  display_position(clock_settings.date.month);
   LCD.print("/");
-
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(date_value.year, 99, 0);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(date_value.year, 99, 0);
-  }
-
-  blink(date_value.year, 10, 1);
+  blink(clock_settings.date.year, 10, 1);
 }
 
 /*
@@ -1114,12 +1066,13 @@ void set_year_on_state()
 */
 void on_menu_set_alarm_enter()
 {
+  state = MENU_SET_ALARM;
   display_menu("Set Alarm");
 }
 
 void menu_set_alarm_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
 }
 
@@ -1128,32 +1081,22 @@ void menu_set_alarm_on_state()
 */
 void on_set_alarm_hour_enter()
 {
+  state = SET_ALARM_HOUR;
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
 }
 
 void set_alarm_hour_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(alarm_value.hour, 23, 0);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(alarm_value.hour, 23, 0);
-  }
-
-  blink(alarm_value.hour, 4, 1);
-
+  blink(clock_settings.alarm.hour, 4, 1);
   LCD.print(":");
-  display_position(alarm_value.minute);
+  display_position(clock_settings.alarm.minute);
   LCD.setCursor(12, 1);
-  alarm_value.active ? LCD.print("ON") : LCD.print("OFF");
+  clock_settings.alarm.active ? LCD.print("ON") : LCD.print("OFF");
 }
 
 /*
@@ -1161,34 +1104,23 @@ void set_alarm_hour_on_state()
 */
 void on_set_alarm_minute_enter()
 {
+  state = SET_ALARM_MINUTE;
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
 }
 
 void set_alarm_minute_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
   LCD.setCursor(4, 1);
-  display_position(alarm_value.hour);
+  display_position(clock_settings.alarm.hour);
   LCD.print(":");
-
-  if (button == BUTTON_UP)
-  {
-    reset_blink();
-    increase(alarm_value.minute, 59, 0);
-  }
-  if (button == BUTTON_DOWN)
-  {
-    reset_blink();
-    decrease(alarm_value.minute, 59, 0);
-  }
-
-  blink(alarm_value.minute, 7, 1);
-
+  blink(clock_settings.alarm.minute, 7, 1);
   LCD.setCursor(12, 1);
-  alarm_value.active ? LCD.print("ON") : LCD.print("OFF");
+  clock_settings.alarm.active ? LCD.print("ON") : LCD.print("OFF");
 }
 
 /*
@@ -1196,32 +1128,30 @@ void set_alarm_minute_on_state()
 */
 void on_set_alarm_on_off_enter()
 {
+  state = SET_ALARM_ON_OFF;
   LCD.setCursor(4, 0);
   LCD.print("Set Alarm:");
 }
 
 void set_alarm_on_off_on_state()
 {
-  check_buttons();
+  check_button();
   transition(button);
+  update_clock_settings();
 
   LCD.setCursor(4, 1);
-  display_position(alarm_value.hour);
+  display_position(clock_settings.alarm.hour);
   LCD.print(":");
-  display_position(alarm_value.minute);
+  display_position(clock_settings.alarm.minute);
   LCD.print("  ");
-
-  if (button == BUTTON_UP || button == BUTTON_DOWN)
-  {
-    reset_blink();
-    alarm_value.active = !alarm_value.active;
-  }
-
-  alarm_value.active ? blink("ON ", 12, 1) : blink("OFF", 12, 1);
+  clock_settings.alarm.active ? blink("ON ", 12, 1) : blink("OFF", 12, 1);
 }
 
-void check_buttons()
+void check_button()
 {
+  if (button != IDLE)
+    button = IDLE;
+
   buttonLeft.read();
   buttonRight.read();
   buttonUp.read();
@@ -1230,35 +1160,29 @@ void check_buttons()
   buttonBack.read();
 
   if (buttonLeft.wasPressed())
-  {
     button = BUTTON_LEFT;
-  }
+
   if (buttonRight.wasPressed())
-  {
     button = BUTTON_RIGHT;
-  }
+
   if (buttonUp.wasPressed())
-  {
     button = BUTTON_UP;
-  }
+
   if (buttonDown.wasPressed())
-  {
     button = BUTTON_DOWN;
-  }
+
   if (buttonOK.wasPressed())
-  {
     button = BUTTON_OK;
-  }
+
   if (buttonBack.wasPressed())
-  {
     button = BUTTON_BACK;
-  }
 
   if (buttonUp.wasReleased())
   {
     long_press_button = false;
     rpt = REPEAT_FIRST;
   }
+
   if (buttonUp.pressedFor(rpt))
   {
     rpt += REPEAT_INCR;
@@ -1271,25 +1195,107 @@ void check_buttons()
     long_press_button = false;
     rpt = REPEAT_FIRST;
   }
+
   if (buttonDown.pressedFor(rpt))
   {
     rpt += REPEAT_INCR;
     long_press_button = true;
     button = BUTTON_DOWN;
   }
+
+  if (button != IDLE)
+    not_AFK();
+
+  check_AFK();
+  if (is_AFK)
+    transition(BUTTON_BACK);
+}
+
+void check_AFK()
+{
+  if (state != MAIN)
+  {
+    if (!is_AFK && (millis() - last_activity_time > AFK_THRESHOLD))
+      is_AFK = true;
+  }
+}
+
+void not_AFK()
+{
+  last_activity_time = millis();
+  is_AFK = false;
 }
 
 void transition(BUTTONS trigger)
 {
-  if (trigger != BUTTON_UP || trigger != BUTTON_DOWN)
+  if (trigger != IDLE && (trigger != BUTTON_UP || trigger != BUTTON_DOWN))
     fsm.trigger(trigger);
 }
 
-void reset_blink()
+void update_clock_settings()
 {
-  button = IDLE;
-  blink_state = false;
-  blink_previousMillis = millis();
+  if (button == BUTTON_UP)
+  {
+    reset_blink();
+    switch (state)
+    {
+    case SET_HOUR:
+      increase(clock_settings.time.hour, 23, 0);
+      break;
+    case SET_MINUTE:
+      increase(clock_settings.time.minute, 59, 0);
+      break;
+    case SET_DAY:
+      increase(clock_settings.date.day, 31, 1);
+      break;
+    case SET_MONTH:
+      increase(clock_settings.date.month, 12, 1);
+      break;
+    case SET_YEAR:
+      increase(clock_settings.date.year, 99, 0);
+      break;
+    case SET_ALARM_HOUR:
+      increase(clock_settings.alarm.hour, 23, 0);
+      break;
+    case SET_ALARM_MINUTE:
+      increase(clock_settings.alarm.minute, 59, 0);
+      break;
+    case SET_ALARM_ON_OFF:
+      clock_settings.alarm.active = !clock_settings.alarm.active;
+      break;
+    }
+  }
+  else if (button == BUTTON_DOWN)
+  {
+    reset_blink();
+    switch (state)
+    {
+    case SET_HOUR:
+      decrease(clock_settings.time.hour, 23, 0);
+      break;
+    case SET_MINUTE:
+      decrease(clock_settings.time.minute, 59, 0);
+      break;
+    case SET_DAY:
+      decrease(clock_settings.date.day, 31, 1);
+      break;
+    case SET_MONTH:
+      decrease(clock_settings.date.month, 12, 1);
+      break;
+    case SET_YEAR:
+      decrease(clock_settings.date.year, 99, 0);
+      break;
+    case SET_ALARM_HOUR:
+      decrease(clock_settings.alarm.hour, 23, 0);
+      break;
+    case SET_ALARM_MINUTE:
+      decrease(clock_settings.alarm.minute, 59, 0);
+      break;
+    case SET_ALARM_ON_OFF:
+      clock_settings.alarm.active = !clock_settings.alarm.active;
+      break;
+    }
+  }
 }
 
 void increase(int &number, int max, int min)
@@ -1309,9 +1315,9 @@ void decrease(int &number, int max, int min)
 void blink_millis()
 {
   unsigned long blink_currentMillis = millis();
-  if (blink_currentMillis - blink_previousMillis > blink_interval)
+  if (blink_currentMillis - blink_previous_millis > blink_interval)
   {
-    blink_previousMillis = blink_currentMillis;
+    blink_previous_millis = blink_currentMillis;
     if (!blink_state)
     {
       blink_state = true;
@@ -1359,6 +1365,12 @@ void blink(String value, int col, int row)
     LCD.setCursor(col, row);
     LCD.print("   ");
   }
+}
+
+void reset_blink()
+{
+  blink_state = false;
+  blink_previous_millis = millis();
 }
 
 void beep()
