@@ -26,8 +26,7 @@ const char *clientID = SECRET_MQTT_CLIENT_ID;
 WiFiClient client;
 PubSubClient mqtt(client);
 
-TaskHandle_t Task0;
-TaskHandle_t Task1;
+TaskHandle_t Task0, Task1, Task2;
 
 #define CONNECTION_TIMEOUT 20
 
@@ -247,8 +246,9 @@ struct SensorValues
 };
 
 volatile SensorValues sensor_values;
-SemaphoreHandle_t sendReadySemaphore;
+SemaphoreHandle_t sendReadySemaphore, sendKeepAliveSemaphore;
 hw_timer_t *timer = NULL;
+hw_timer_t *keepAlive = NULL;
 
 ClockSettings clock_settings;
 
@@ -507,6 +507,82 @@ void IRAM_ATTR onTimer()
   xSemaphoreGiveFromISR(sendReadySemaphore, NULL);
 }
 
+void IRAM_ATTR onKeepAliveTimer()
+{
+  xSemaphoreGiveFromISR(sendKeepAliveSemaphore, NULL);
+}
+
+void WIFI_MQTT_connection()
+{
+  bool wifi_conn = false;
+  bool mqtt_conn = false;
+  while (!wifi_conn || !mqtt_conn)
+  {
+    // Check if WiFi is connected
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      wifi_conn = true;
+      // Serial.println("WiFi still conneted");
+      // vTaskDelay(500/portTICK_PERIOD_MS);
+      // Check if MQTT Server is connected
+      if (!mqtt.connected())
+      {
+        mqtt.connect(clientID, mqttUserName, mqttPass);
+        if (!mqtt.connected())
+        {
+          mqtt_conn = false;
+          vTaskDelay(500 / portTICK_PERIOD_MS);
+          Serial.print(".");
+          continue;
+        }
+      }
+      mqtt_conn = true;
+    }
+    else
+    {
+      wifi_conn = false;
+      Serial.println("WiFi connecting");
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(SSID, PASS);
+
+      unsigned long startAttemptTime = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_EVENT_MAX)
+      {
+      }
+      if (WiFi.status() != WL_CONNECTED)
+      {
+        Serial.println("WiFi Failed");
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        continue;
+      }
+    }
+  }
+}
+
+void keep_alive_task(void *parameter)
+{
+  for (;;)
+  {
+    static bool firstrun = true;
+    if (firstrun)
+    {                                       // setup for this task
+      vTaskDelay(200 / portTICK_PERIOD_MS); // to let other task do first
+      firstrun = false;
+      xSemaphoreGive(sendKeepAliveSemaphore);
+      timerAlarmEnable(keepAlive);
+    }
+
+    if (xSemaphoreTake(sendKeepAliveSemaphore, 1) == pdTRUE)
+    {
+      WIFI_MQTT_connection();
+      String dataString = "&field6=1";
+      String topicString = "channels/" + String(channelID) + "/publish";
+      mqtt.publish(topicString.c_str(), dataString.c_str());
+      Serial.println(dataString);
+    }
+  }
+}
+
 void alarm_clock_settings_task(void *parameter)
 {
   for (;;)
@@ -520,56 +596,17 @@ void send_mqtt_task(void *parameter)
 {
   for (;;)
   {
-    if (xSemaphoreTake(sendReadySemaphore, portMAX_DELAY))
+    // Serial.println("in T1");
+
+    if (xSemaphoreTake(sendReadySemaphore, 1) == pdTRUE)
     {
-      Serial.println("in T1");
-      // Check if WiFi is connected
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        // Serial.println("WiFi still conneted");
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-
-        // Check if MQTT Server is connected
-        if (!mqtt.connected())
-        {
-          mqtt.connect(clientID, mqttUserName, mqttPass);
-          if (!mqtt.connected())
-          {
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-            continue;
-            Serial.print(".");
-          }
-        }
-
-        Serial.println("MQTT still conneted");
-        Serial.println("MQTT Sending");
-        // Reset Timer
-
-        String dataString = "&field1=" + String(sensor_values.humidity) + "&field2=" + String(sensor_values.temperature) + "&field3=" + String(sensor_values.pm1) + "&field4=" + String(sensor_values.pm2_5) + "&field5=" + String(sensor_values.pm10);
-        String topicString = "channels/" + String(channelID) + "/publish";
-        Serial.println(dataString);
-        mqtt.publish(topicString.c_str(), dataString.c_str());
-
-        // Update Half seconds every 500 ms
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-      }
-      else
-      {
-        Serial.println("WiFi connecting");
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(SSID, PASS);
-
-        unsigned long startAttemptTime = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_EVENT_MAX)
-        {
-        }
-        if (WiFi.status() != WL_CONNECTED)
-        {
-          Serial.println("WiFi Failed");
-          vTaskDelay(10000 / portTICK_PERIOD_MS);
-          continue;
-        }
-      }
+      timerStop(keepAlive);
+      WIFI_MQTT_connection();
+      String dataString = "&field1=" + String(sensor_values.humidity) + "&field2=" + String(sensor_values.temperature) + "&field3=" + String(sensor_values.pm1) + "&field4=" + String(sensor_values.pm2_5) + "&field5=" + String(sensor_values.pm10);
+      String topicString = "channels/" + String(channelID) + "/publish";
+      Serial.println(dataString);
+      mqtt.publish(topicString.c_str(), dataString.c_str());
+      timerStart(keepAlive);
     }
   }
 }
@@ -592,6 +629,8 @@ void setup()
   create_symbols();
   LCD.clear();
 
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
   pinMode(ALARM_OUT, OUTPUT);
   pinMode(SQW_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(SQW_PIN), alarm_isr, FALLING);
@@ -601,13 +640,13 @@ void setup()
   setSyncInterval(5);
   RTC.squareWave(DS3232RTC::SQWAVE_NONE);
 
-  sendReadySemaphore = xSemaphoreCreateBinary();
-  xSemaphoreGive(sendReadySemaphore);
+  mqtt.setServer(server, 1883);
+
   // WiFi need to run on core that arduino runs
   xTaskCreatePinnedToCore(
       alarm_clock_settings_task,   /* Function to implement the task */
       "alarm_clock_settings_task", /* Name of the task */
-      2048,                        /* Stack size in words */
+      5120,                        /* Stack size in words */
       NULL,                        /* Task input parameter */
       1,                           /* Priority of the task */
       &Task0,                      /* Task handle. */
@@ -615,18 +654,35 @@ void setup()
   xTaskCreatePinnedToCore(
       send_mqtt_task,   /* Function to implement the task */
       "send_mqtt_task", /* Name of the task */
-      2048,             /* Stack size in words */
+      5120,             /* Stack size in words */
       NULL,             /* Task input parameter */
       1,                /* Priority of the task */
       &Task1,           /* Task handle. */
       1);               /* Core where the task should run */
 
+  xTaskCreatePinnedToCore(
+      keep_alive_task,   /* Function to implement the task */
+      "keep_alive_task", /* Name of the task */
+      5120,              /* Stack size in words */
+      NULL,              /* Task input parameter */
+      1,                 /* Priority of the task */
+      &Task2,            /* Task handle. */
+      1);                /* Core where the task should run */
+
   timer = timerBegin(0, 80, true);             // 80 prescaler for 1MHz clock_settings, count up
   timerAttachInterrupt(timer, &onTimer, true); // Attach ISR
   // timerAlarmWrite(timer, 1800000000, true);  // 30 minutes in microseconds
-  timerAlarmWrite(timer, 60000000, true);
+  timerAlarmWrite(timer, 150000000, true); // 3 minutes
   timerAlarmEnable(timer);
-  mqtt.setServer(server, 1883);
+
+  // Set up timer for MQTT keep-alive
+  keepAlive = timerBegin(1, 80, true);
+  timerAttachInterrupt(keepAlive, &onKeepAliveTimer, true);
+  timerAlarmWrite(keepAlive, 60000000, true);
+
+  sendReadySemaphore = xSemaphoreCreateBinary();
+  sendKeepAliveSemaphore = xSemaphoreCreateBinary();
+  xSemaphoreGive(sendReadySemaphore);
 }
 
 void loop() {}
@@ -995,6 +1051,17 @@ void main_on_state()
 
   check_button();
   transition(button);
+
+  static unsigned long startAlertMillis = millis();
+  // instant send notification
+  if (
+      (sensor_values.humidity >= 70 || sensor_values.temperature >= 35 || sensor_values.pm10 >= 150 || sensor_values.pm1 >= 75 || sensor_values.pm2_5 >= 75) && (millis() - startAlertMillis >= 900000))
+  {
+    startAlertMillis = millis();
+    xSemaphoreGive(sendReadySemaphore);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    timerRestart(timer);
+  }
 }
 
 /*
