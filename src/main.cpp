@@ -583,7 +583,7 @@ void keep_alive_task(void *parameter)
   }
 }
 
-void alarm_clock_settings_task(void *parameter)
+void alarm_clock_task(void *parameter)
 {
   for (;;)
   {
@@ -602,7 +602,11 @@ void send_mqtt_task(void *parameter)
     {
       timerStop(keepAlive);
       WIFI_MQTT_connection();
-      String dataString = "&field1=" + String(sensor_values.humidity) + "&field2=" + String(sensor_values.temperature) + "&field3=" + String(sensor_values.pm1) + "&field4=" + String(sensor_values.pm2_5) + "&field5=" + String(sensor_values.pm10);
+      String dataString = "&field1=" + String(sensor_values.humidity) \
+        + "&field2=" + String(sensor_values.temperature) \
+        + "&field3=" + String(sensor_values.pm1) \
+        + "&field4=" + String(sensor_values.pm2_5) \
+        + "&field5=" + String(sensor_values.pm10);
       String topicString = "channels/" + String(channelID) + "/publish";
       Serial.println(dataString);
       mqtt.publish(topicString.c_str(), dataString.c_str());
@@ -644,8 +648,8 @@ void setup()
 
   // WiFi need to run on core that arduino runs
   xTaskCreatePinnedToCore(
-      alarm_clock_settings_task,   /* Function to implement the task */
-      "alarm_clock_settings_task", /* Name of the task */
+      alarm_clock_task,   /* Function to implement the task */
+      "alarm_clock_task", /* Name of the task */
       5120,                        /* Stack size in words */
       NULL,                        /* Task input parameter */
       1,                           /* Priority of the task */
