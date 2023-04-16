@@ -39,7 +39,7 @@ TaskHandle_t Task0, Task1, Task2;
 #define SQW_PIN 23
 #define ALARM_OUT 13
 
-#define DHT_PIN 2
+#define DHT_PIN 15
 #define DHT_TYPE DHT22
 
 #define DEBOUNCE_MS 20
@@ -493,13 +493,13 @@ void create_symbols()
   LCD.createChar(2, MENU_LEFT_ARROW);
   LCD.createChar(3, MENU_RIGHT_ARROW);
   LCD.createChar(4, THERMOMETER);
-  LCD.createChar(5, CHAR_A);
-  LCD.createChar(6, CHAR_L);
-  LCD.createChar(7, CHAR_C);
-  LCD.createChar(8, CHAR_EXCL);
-  LCD.createChar(9, WATER_DROPLET);
-  LCD.createChar(10, MU);
-  LCD.createChar(11, POWER_THREE);
+  // LCD.createChar(5, CHAR_A);
+  // LCD.createChar(6, CHAR_L);
+  // LCD.createChar(7, CHAR_C);
+  LCD.createChar(5, CHAR_EXCL);
+  LCD.createChar(6, WATER_DROPLET);
+  LCD.createChar(7, MU);
+  LCD.createChar(8, POWER_THREE);
 }
 
 void IRAM_ATTR onTimer()
@@ -926,7 +926,7 @@ void display_temperature(int row, int col)
 void display_humidity(int row, int col)
 {
   LCD.setCursor(row, col);
-  LCD.write(9);
+  LCD.write(6);
   if (sensor_values.humidity < 10)
   {
     LCD.print("0");
@@ -941,9 +941,9 @@ void display_pm_2_5(int col)
   LCD.print("Dust: ");
   LCD.print(sensor_values.pm2_5);
   LCD.setCursor(11, col);
-  LCD.write(10);
+  LCD.write(7);
   LCD.print("g/m");
-  LCD.write(11);
+  LCD.write(8);
 }
 
 void display_menu(String menu)
@@ -1010,13 +1010,16 @@ void on_main_enter()
 {
   state = MAIN;
   LCD.setCursor(6, 0);
-  LCD.write(5);
+  LCD.print("A");
+  // LCD.write(5);
   LCD.setCursor(7, 0);
-  LCD.write(6);
+  LCD.print("L");
+  // LCD.write(6);
   LCD.setCursor(8, 0);
-  LCD.write(7);
+  LCD.print("C");
+  // LCD.write(7);
   LCD.setCursor(9, 0);
-  LCD.write(8);
+  LCD.write(5);
   LCD.setCursor(1, 1);
   LCD.print("ESP32 & DS3231");
   vTaskDelay(1200 / portTICK_PERIOD_MS);
