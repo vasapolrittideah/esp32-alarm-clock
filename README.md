@@ -1,5 +1,7 @@
 # Alarm Clock Project using ESP32
 
+![MAIN](./assets/MAIN.jpg)
+
 This project is part of the Embedded System Design Lab course of the Computer Engineering curriculum at King Mongkut's University of Technology North Bangkok ([KMUTNB](https://www.kmutnb.ac.th/)).
 
 The Alarm Clock Project is an embedded system that utilizes ESP32S 38pins, and associated components, see below. We implements an alarm clock with additional features such as displaying the temperature, humidity, and dust levels in the room. It provides an easy-to-use interface for setting alarms, displaying the time, temperature, humidity, and air quality.
