@@ -27,8 +27,8 @@ The system is designed to be modular and extensible, allowing for easy integrati
 - [x] Allows the user to save the alarm time information in the EEPROM.
 - [ ] Offers a snooze function.
 - [x] Sends environmental values to ThingSpeak using the MQTT protocol
-- [ ] Enables email notifications to be sent when environmental values reach their designated threshold.
-- [ ] Includes a keepalive mechanism to regularly check the availability of devices.
+- [x] Enables email notifications to be sent when environmental values reach their designated threshold.
+- [x] Includes a keepalive mechanism to regularly check the availability of devices.
 
 ## Components Used
 The following hardware components are used in this project:
