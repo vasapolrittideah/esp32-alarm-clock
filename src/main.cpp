@@ -602,11 +602,7 @@ void send_mqtt_task(void *parameter)
     {
       timerStop(keepAlive);
       WIFI_MQTT_connection();
-      String dataString = "&field1=" + String(sensor_values.humidity) \
-        + "&field2=" + String(sensor_values.temperature) \
-        + "&field3=" + String(sensor_values.pm1) \
-        + "&field4=" + String(sensor_values.pm2_5) \
-        + "&field5=" + String(sensor_values.pm10);
+      String dataString = "&field1=" + String(sensor_values.humidity) + "&field2=" + String(sensor_values.temperature) + "&field3=" + String(sensor_values.pm1) + "&field4=" + String(sensor_values.pm2_5) + "&field5=" + String(sensor_values.pm10);
       String topicString = "channels/" + String(channelID) + "/publish";
       Serial.println(dataString);
       mqtt.publish(topicString.c_str(), dataString.c_str());
@@ -650,11 +646,11 @@ void setup()
   xTaskCreatePinnedToCore(
       alarm_clock_task,   /* Function to implement the task */
       "alarm_clock_task", /* Name of the task */
-      5120,                        /* Stack size in words */
-      NULL,                        /* Task input parameter */
-      1,                           /* Priority of the task */
-      &Task0,                      /* Task handle. */
-      0);                          /* Core where the task should run */
+      5120,               /* Stack size in words */
+      NULL,               /* Task input parameter */
+      1,                  /* Priority of the task */
+      &Task0,             /* Task handle. */
+      0);                 /* Core where the task should run */
   xTaskCreatePinnedToCore(
       send_mqtt_task,   /* Function to implement the task */
       "send_mqtt_task", /* Name of the task */
@@ -864,8 +860,10 @@ void get_temperature_humidity()
   int humi = dht.readHumidity();
   int temp_C = dht.readTemperature();
 
-  sensor_values.temperature = temp_C;
-  sensor_values.humidity = humi;
+  if (temp_C < 200)
+    sensor_values.temperature = temp_C;
+  if (humi < 200)
+    sensor_values.humidity = humi;
 }
 
 void get_pm()
